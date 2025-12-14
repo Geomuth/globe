@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>🌐 GLOBAL NETWORK VISUALIZATION</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #000;
+            color: #0f0;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+            height: 100vh;
+        }
+        
+        #globe-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+        
+        #controls {
+            position: fixed;
+            bottom: 15px;
+            right: 15px;
+            background: rgba(0, 20, 0, 0.85);
+            border: 1px solid #0f0;
+            padding: 10px;
+            z-index: 100;
+            box-shadow: 0 0 15px rgba(0, 255, 0, 0.3);
+            backdrop-filter: blur(5px);
+            border-radius: 5px;
+            max-width: 300px;
+            font-size: 12px;
+        }
+        
+        .control-section {
+            margin-bottom: 8px;
+            padding: 5px;
+            background: rgba(0, 50, 0, 0.3);
+            border-radius: 3px;
+        }
+        
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 5px;
+            margin-top: 5px;
+        }
+        
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 3px 5px;
+            background: rgba(0, 30, 0, 0.5);
+            border-radius: 2px;
+            font-size: 11px;
+        }
+        
+        .value {
+            color: #0af;
+            font-weight: bold;
+        }
+        
+        .online { color: #0f0; }
+        .warning { color: #ff0; }
+        .critical { color: #f00; }
+        
+        h3 {
+            color: #0f0;
+            margin-bottom: 5px;
+            font-size: 13px;
+            text-align: center;
+            border-bottom: 1px solid #0f0;
+            padding-bottom: 3px;
+        }
+        
+        .btn-group {
+            display: flex;
+            gap: 5px;
+            margin-top: 8px;
+        }
+        
+        button {
+            background: #0f0;
+            color: #000;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-family: 'Courier New';
+            font-weight: bold;
+            font-size: 11px;
+            flex: 1;
+        }
+        
+        button:hover {
+            background: #0af;
+        }
+        
+        /* Animated connection lines */
+        @keyframes snakeMove {
+            0% { stroke-dashoffset: 0; }
+            100% { stroke-dashoffset: -100; }
+        }
+        
+        .snake-line {
+            stroke-dasharray: 5, 10;
+            animation: snakeMove 1s linear infinite;
+        }
+        
+        /* Pulse effect for data transfer */
+        @keyframes dataPulse {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 1; }
+        }
+        
+        .data-pulse {
+            animation: dataPulse 2s infinite;
+        }
+    </style>
+</head>
+<body>
+    <!-- Main globe -->
+    <div id="globe-container">
+        <div id="globe"></div>
+    </div>
+    
+    <!-- Compact Controls Panel -->
+    <div id="controls" class="panel">
+        <h3>🌐 NETWORK CONTROL</h3>
+        
+        <div class="control-section">
+            <div class="stat-grid">
+                <div class="stat-item">
+                    <span>NODES:</span>
+                    <span id="node-count" class="value">0</span>
+                </div>
+                <div class="stat-item">
+                    <span>CONNECTIONS:</span>
+                    <span id="conn-count" class="value">0</span>
+                </div>
+                <div class="stat-item">
+                    <span>USERS:</span>
+                    <span id="user-count" class="value">0</span>
+                </div>
+                <div class="stat-item">
+                    <span>COUNTRIES:</span>
+                    <span id="country-count" class="value">0</span>
+                </div>
+                <div class="stat-item">
+                    <span>LATENCY:</span>
+                    <span id="latency" class="value">-- ms</span>
+                </div>
+                <div class="stat-item">
+                    <span>BANDWIDTH:</span>
+                    <span id="bandwidth" class="value">-- Gbps</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="control-section">
+            <div class="stat-item">
+                <span>🇰🇪 KENYA:</span>
+                <span id="ke-count" class="value">0</span>
+            </div>
+            <div class="stat-item">
+                <span>🇺🇸 USA:</span>
+                <span id="us-count" class="value">0</span>
+            </div>
+            <div class="stat-item">
+                <span>🇩🇪 GERMANY:</span>
+                <span id="de-count" class="value">0</span>
+            </div>
+            <div class="stat-item">
+                <span>🇨🇳 CHINA:</span>
+                <span id="cn-count" class="value">0</span>
+            </div>
+        </div>
+        
+        <div class="btn-group">
+            <button onclick="toggleRotation()" id="rotation-btn">⏸️ PAUSE</button>
+            <button onclick="resetView()">🔄 RESET</button>
+            <button onclick="toggleLines()" id="lines-btn">🔗 LINES</button>
+        </div>
+        
+        <div style="margin-top: 8px; font-size: 10px; text-align: center; opacity: 0.8;">
+            <div>🖱️ DRAG: Rotate | SCROLL: Zoom</div>
+            <div>CLICK: Node Info | SPACE: Toggle Rotation</div>
+        </div>
+    </div>
+
+    <script>
+        // Generate 250+ network nodes
+        const networkNodes = [];
+        const countries = [
+            {name: "USA", lat: 37.1, lon: -95.7, code: "US", count: 45},
+            {name: "Germany", lat: 51.2, lon: 10.4, code: "DE", count: 32},
+            {name: "China", lat: 35.9, lon: 104.2, code: "CN", count: 38},
+            {name: "UK", lat: 55.4, lon: -3.4, code: "GB", count: 28},
+            {name: "Japan", lat: 36.2, lon: 138.3, code: "JP", count: 25},
+            {name: "India", lat: 20.6, lon: 78.9, code: "IN", count: 22},
+            {name: "Brazil", lat: -14.2, lon: -51.9, code: "BR", count: 18},
+            {name: "Russia", lat: 61.5, lon: 105.3, code: "RU", count: 20},
+            {name: "France", lat: 46.2, lon: 2.2, code: "FR", count: 16},
+            {name: "South Africa", lat: -30.6, lon: 22.9, code: "ZA", count: 12},
+            {name: "Australia", lat: -25.3, lon: 133.8, code: "AU", count: 15},
+            {name: "Canada", lat: 56.1, lon: -106.3, code: "CA", count: 14},
+            {name: "Singapore", lat: 1.3, lon: 103.8, code: "SG", count: 10},
+            {name: "Kenya", lat: -1.286389, lon: 36.817223, code: "KE", count: 8},
+            {name: "Netherlands", lat: 52.1, lon: 5.3, code: "NL", count: 12}
+        ];
+        
+        // Generate IP addresses
+        function generateIP(countryCode) {
+            const ranges = {
+                US: ['192.168.', '10.0.', '172.16.'],
+                DE: ['194.', '195.', '212.'],
+                CN: ['202.', '203.', '210.'],
+                KE: ['154.', '41.', '196.'],
+                GB: ['213.', '193.', '194.'],
+                JP: ['210.', '211.', '218.']
+            };
+            
+            const range = ranges[countryCode] || ['192.', '10.', '172.'];
+            const base = range[Math.floor(Math.random() * range.length)];
+            return base + Math.floor(Math.random() * 255) + '.' + 
+                   Math.floor(Math.random() * 255) + '.' + 
+                   Math.floor(Math.random() * 255);
+        }
+        
+        // Create nodes - all as colored dots
+        countries.forEach(country => {
+            for (let i = 0; i < country.count; i++) {
+                const lat = country.lat + (Math.random() * 8 - 4);
+                const lon = country.lon + (Math.random() * 8 - 4);
+                
+                // Assign colors based on type
+                let color, size;
+                if (country.code === 'KE' && i === 0) {
+                    // Your location - bright yellow
+                    color = '#FFFF00';
+                    size = 12;
+                } else if (i < 3) {
+                    // Hub nodes
+                    color = '#FF00FF';
+                    size = 8;
+                } else if (i < 8) {
+                    // Server nodes
+                    color = '#FF5500';
+                    size = 6;
+                } else {
+                    // User nodes
+                    color = '#00AAFF';
+                    size = 4;
+                }
+                
+                networkNodes.push({
+                    name: `${country.code}-${i+1}`,
+                    ip: generateIP(country.code),
+                    lat: lat,
+                    lon: lon,
+                    city: country.name,
+                    country: country.name,
+                    countryCode: country.code,
+                    color: color,
+                    size: size,
+                    type: i === 0 && country.code === 'KE' ? 'source' : 
+                         i < 3 ? 'hub' : 
+                         i < 8 ? 'server' : 'user'
+                });
+            }
+        });
+        
+        // Create connections with snake animation
+        const connections = [];
+        const liveUsers = [];
+        
+        // Connect nodes within countries
+        countries.forEach(country => {
+            const countryNodes = networkNodes.filter(n => n.countryCode === country.code);
+            countryNodes.forEach((node, i) => {
+                // Connect to other nodes in same country
+                for (let j = i + 1; j < Math.min(i + 3, countryNodes.length); j++) {
+                    connections.push({
+                        from: networkNodes.indexOf(node),
+                        to: networkNodes.indexOf(countryNodes[j]),
+                        color: `rgba(${country.code === 'KE' ? '0,255,0' : '0,200,255'}, 0.4)`,
+                        width: 0.8,
+                        animated: true
+                    });
+                }
+                
+                // Connect to international hubs
+                if (node.type === 'hub' && Math.random() > 0.5) {
+                    const foreignHubs = networkNodes.filter(n => 
+                        n.type === 'hub' && n.countryCode !== country.code
+                    );
+                    if (foreignHubs.length > 0) {
+                        const hub = foreignHubs[Math.floor(Math.random() * foreignHubs.length)];
+                        connections.push({
+                            from: networkNodes.indexOf(node),
+                            to: networkNodes.indexOf(hub),
+                            color: 'rgba(255, 100, 255, 0.5)',
+                            width: 1.2,
+                            animated: true
+                        });
+                    }
+                }
+                
+                // Create live users
+                if (node.type === 'user' && Math.random() > 0.7) {
+                    liveUsers.push({
+                        ip: node.ip,
+                        target: '8.8.8.8',
+                        latency: Math.floor(20 + Math.random() * 100),
+                        country: node.country
+                    });
+                }
+            });
+        });
+        
+        // Create visualization
+        let plot;
+        let isRotating = true;
+        let showLines = true;
+        let rotationInterval;
+        
+        function createGlobe() {
+            // Create node traces - all as simple dots
+            const nodeTrace = {
+                type: 'scattergeo',
+                mode: 'markers',
+                lat: networkNodes.map(n => n.lat),
+                lon: networkNodes.map(n => n.lon),
+                marker: {
+                    size: networkNodes.map(n => n.size),
+                    color: networkNodes.map(n => n.color),
+                    symbol: 'circle',
+                    line: {
+                        width: 1,
+                        color: networkNodes.map(n => n.color)
+                    },
+                    opacity: 0.9
+                },
+                text: networkNodes.map(n => 
+                    `<b>${n.name}</b><br>` +
+                    `🌍 ${n.country}<br>` +
+                    `🔌 ${n.ip}<br>` +
+                    `📡 ${n.type.toUpperCase()}`
+                ),
+                hoverinfo: 'text',
+                hoverlabel: {
+                    bgcolor: '#000',
+                    bordercolor: '#0f0',
+                    font: { color: '#fff', family: 'Courier New', size: 11 }
+                },
+                name: 'Nodes'
+            };
+            
+            // Create connection traces with snake animation
+            const connectionTraces = showLines ? connections.map((conn, idx) => {
+                const fromNode = networkNodes[conn.from];
+                const toNode = networkNodes[conn.to];
+                
+                // Create multiple dashed segments for snake effect
+                const segments = 10;
+                const lats = [];
+                const lons = [];
+                
+                for (let i = 0; i <= segments; i++) {
+                    const t = i / segments;
+                    lats.push(fromNode.lat + (toNode.lat - fromNode.lat) * t);
+                    lons.push(fromNode.lon + (toNode.lon - fromNode.lon) * t);
+                }
+                
+                return {
+                    type: 'scattergeo',
+                    mode: 'lines',
+                    lat: lats,
+                    lon: lons,
+                    line: {
+                        width: conn.width,
+                        color: conn.color,
+                        dash: 'dash'
+                    },
+                    hoverinfo: 'none',
+                    showlegend: false,
+                    opacity: 0.6
+                };
+            }) : [];
+            
+            // Create country label traces (only show when zoomed)
+            const countryTraces = countries.map(country => ({
+                type: 'scattergeo',
+                mode: 'text',
+                lat: [country.lat],
+                lon: [country.lon],
+                text: [country.name],
+                textfont: {
+                    color: 'rgba(0, 255, 255, 0.7)',
+                    size: 8,
+                    family: 'Arial, sans-serif'
+                },
+                hoverinfo: 'skip',
+                showlegend: false,
+                visible: true
+            }));
+            
+            // Combine traces
+            const allTraces = [...connectionTraces, nodeTrace, ...countryTraces];
+            
+            // Layout configuration
+            const layout = {
+                geo: {
+                    projection: {
+                        type: 'orthographic',
+                        rotation: { lon: 36, lat: -1, roll: 0 }
+                    },
+                    showcoastlines: true,
+                    coastlinecolor: 'rgba(0, 200, 255, 0.3)',
+                    coastlinewidth: 0.5,
+                    showland: true,
+                    landcolor: 'rgb(20, 40, 20)',
+                    showocean: true,
+                    oceancolor: 'rgb(5, 20, 40)',
+                    showcountries: true,
+                    countrycolor: 'rgba(80, 80, 80, 0.3)',
+                    countrywidth: 0.5,
+                    bgcolor: 'rgb(0, 5, 15)',
+                    showframe: false,
+                    showlakes: false,
+                    showsubunits: true,
+                    subunitcolor: 'rgba(60, 60, 60, 0.2)',
+                    resolution: 50,
+                    lonaxis: { gridcolor: 'rgba(0, 100, 200, 0.1)' },
+                    lataxis: { gridcolor: 'rgba(0, 100, 200, 0.1)' }
+                },
+                paper_bgcolor: 'rgb(0, 0, 0)',
+                plot_bgcolor: 'rgb(0, 0, 0)',
+                showlegend: false,
+                margin: { l: 0, r: 0, t: 0, b: 0 },
+                height: window.innerHeight,
+                width: window.innerWidth,
+                hovermode: 'closest',
+                uirevision: 'network'
+            };
+            
+            const config = {
+                responsive: true,
+                displayModeBar: false,
+                scrollZoom: true,
+                doubleClick: 'reset+autosize'
+            };
+            
+            // Create the plot
+            Plotly.newPlot('globe', allTraces, layout, config).then(g => {
+                plot = g;
+                updateStatistics();
+                startRotation();
+                animateSnakeLines();
+                
+                // Update labels based on zoom
+                plot.on('plotly_relayout', (eventdata) => {
+                    updateCountryLabels(eventdata);
+                });
+            });
+        }
+        
+        // Smooth rotation function
+        function startRotation() {
+            if (rotationInterval) clearInterval(rotationInterval);
+            
+            rotationInterval = setInterval(() => {
+                if (isRotating) {
+                    const currentRotation = plot.layout.geo.projection.rotation;
+                    Plotly.relayout('globe', {
+                        'geo.projection.rotation': {
+                            lon: currentRotation.lon + 0.2,
+                            lat: currentRotation.lat,
+                            roll: currentRotation.roll
+                        }
+                    });
+                }
+            }, 50);
+        }
+        
+        // Animate snake lines
+        function animateSnakeLines() {
+            let offset = 0;
+            
+            setInterval(() => {
+                if (!showLines) return;
+                
+                offset++;
+                connections.forEach((conn, idx) => {
+                    if (conn.animated) {
+                        // Update dash offset for snake effect
+                        const dashPattern = `10,5,${offset % 10},5`;
+                        Plotly.restyle('globe', {
+                            'line.dash': dashPattern
+                        }, [idx]);
+                        
+                        // Pulse color for active connections
+                        if (Math.random() > 0.8) {
+                            Plotly.restyle('globe', {
+                                'line.color': [`rgba(255, 255, 100, ${0.3 + Math.random() * 0.4})`]
+                            }, [idx]);
+                            
+                            // Reset color after pulse
+                            setTimeout(() => {
+                                Plotly.restyle('globe', {
+                                    'line.color': [conn.color]
+                                }, [idx]);
+                            }, 500);
+                        }
+                    }
+                });
+            }, 100);
+        }
+        
+        // Update country labels based on zoom
+        function updateCountryLabels(eventdata) {
+            if (eventdata['geo.projection.scale']) {
+                const scale = eventdata['geo.projection.scale'];
+                const fontSize = Math.min(12, Math.max(6, scale / 50));
+                const opacity = Math.min(0.8, Math.max(0.2, scale / 200));
+                
+                Plotly.restyle('globe', {
+                    'textfont.size': fontSize,
+                    'textfont.color': `rgba(0, 255, 255, ${opacity})`
+                }, [connections.length + 1]); // Country labels trace index
+            }
+        }
+        
+        // Update statistics
+        function updateStatistics() {
+            const countryStats = {};
+            networkNodes.forEach(node => {
+                countryStats[node.countryCode] = (countryStats[node.countryCode] || 0) + 1;
+            });
+            
+            document.getElementById('node-count').textContent = networkNodes.length;
+            document.getElementById('conn-count').textContent = connections.length;
+            document.getElementById('user-count').textContent = liveUsers.length;
+            document.getElementById('country-count').textContent = Object.keys(countryStats).length;
+            
+            document.getElementById('ke-count').textContent = countryStats['KE'] || 0;
+            document.getElementById('us-count').textContent = countryStats['US'] || 0;
+            document.getElementById('de-count').textContent = countryStats['DE'] || 0;
+            document.getElementById('cn-count').textContent = countryStats['CN'] || 0;
+            
+            const totalLatency = liveUsers.reduce((sum, user) => sum + user.latency, 0);
+            const avgLatency = liveUsers.length > 0 ? Math.floor(totalLatency / liveUsers.length) : 0;
+            const totalBandwidth = Math.floor(networkNodes.length * 0.1 + Math.random() * 5);
+            
+            document.getElementById('latency').textContent = `${avgLatency} ms`;
+            document.getElementById('bandwidth').textContent = `${totalBandwidth.toFixed(1)} Gbps`;
+        }
+        
+        // Control functions
+        function toggleRotation() {
+            isRotating = !isRotating;
+            const btn = document.getElementById('rotation-btn');
+            btn.textContent = isRotating ? '⏸️ PAUSE' : '▶️ PLAY';
+            btn.style.background = isRotating ? '#0f0' : '#ff0';
+        }
+        
+        function resetView() {
+            Plotly.relayout('globe', {
+                'geo.projection.rotation': { lon: 36, lat: -1, roll: 0 },
+                'geo.projection.scale': 1
+            });
+        }
+        
+        function toggleLines() {
+            showLines = !showLines;
+            const btn = document.getElementById('lines-btn');
+            btn.textContent = showLines ? '🔗 LINES' : '🚫 LINES';
+            btn.style.background = showLines ? '#0f0' : '#f00';
+            
+            // Update plot with/without lines
+            Plotly.deleteTraces('globe', [...Array(connections.length).keys()]);
+            if (showLines) {
+                createGlobe();
+            }
+        }
+        
+        // Initialize
+        window.addEventListener('load', () => {
+            createGlobe();
+            
+            // Update stats every 2 seconds
+            setInterval(updateStatistics, 2000);
+            
+            // Add random network events
+            setInterval(() => {
+                if (Math.random() > 0.8) {
+                    // Simulate data transfer pulse
+                    const randomConn = connections[Math.floor(Math.random() * connections.length)];
+                    if (randomConn && showLines) {
+                        Plotly.restyle('globe', {
+                            'line.width': [randomConn.width * 2],
+                            'line.color': ['#FFFF00']
+                        }, [connections.indexOf(randomConn)]);
+                        
+                        setTimeout(() => {
+                            Plotly.restyle('globe', {
+                                'line.width': [randomConn.width],
+                                'line.color': [randomConn.color]
+                            }, [connections.indexOf(randomConn)]);
+                        }, 300);
+                    }
+                }
+            }, 1000);
+        });
+        
+        // Interactive features
+        document.getElementById('globe').on('plotly_click', (data) => {
+            if (data.points && data.points[0]) {
+                const pointIndex = data.points[0].pointNumber;
+                // Check if clicked on a node (not connection)
+                if (pointIndex < networkNodes.length) {
+                    const node = networkNodes[pointIndex];
+                    
+                    // Highlight the node temporarily
+                    Plotly.restyle('globe', {
+                        'marker.size': networkNodes.map((n, i) => 
+                            i === pointIndex ? n.size * 2 : n.size
+                        ),
+                        'marker.color': networkNodes.map((n, i) => 
+                            i === pointIndex ? '#FFFFFF' : n.color
+                        )
+                    }, [showLines ? connections.length : 0]);
+                    
+                    // Reset after 1 second
+                    setTimeout(() => {
+                        Plotly.restyle('globe', {
+                            'marker.size': networkNodes.map(n => n.size),
+                            'marker.color': networkNodes.map(n => n.color)
+                        }, [showLines ? connections.length : 0]);
+                    }, 1000);
+                }
+            }
+        });
+        
+        // Keyboard controls
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                toggleRotation();
+            }
+            
+            if (e.code === 'KeyR') {
+                resetView();
+            }
+            
+            if (e.code === 'KeyL') {
+                toggleLines();
+            }
+        });
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            Plotly.relayout('globe', {
+                height: window.innerHeight,
+                width: window.innerWidth
+            });
+        });
+        
+        // Add mouse wheel zoom with better control
+        document.getElementById('globe').on('plotly_scroll', (event) => {
+            event.preventDefault();
+        });
+    </script>
+</body>
+</html>
